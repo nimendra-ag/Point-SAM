@@ -65,7 +65,7 @@ model.apply(replace_with_fused_layernorm)
 # Load pre-trained model
 # ---------------------------------------------------------------------------- #
 load_model(model, args.ckpt_path)
-sam = model
+sam = model.cuda().eval()
 
 
 @app.route("/")
@@ -177,8 +177,12 @@ def save():
 @app.route("/segment", methods=["POST"])
 def segment():
     request_data = request.get_json()
+    
     prompt_point = request_data["prompt_point"]
+    print(f"prompt_data {prompt_point}")
+
     prompt_label = request_data["prompt_label"]
+    print(f"prompt_label {prompt_label}")
 
     # append prompt
     global prompts, labels, prompt_mask
@@ -196,13 +200,14 @@ def segment():
         "prompt_mask": prompt_mask,
     }
     with torch.no_grad():
-        sam.set_pointcloud(pc_xyz, pc_rgb)
-        mask, scores, logits = sam.predict_masks(
-            prompt_points, prompt_labels, prompt_mask, prompt_mask is None
+        mask, scores = sam.predict_masks(
+            pc_xyz, pc_rgb, prompt_points, prompt_labels, prompt_mask, prompt_mask is None
         )
-    prompt_mask = logits[0][torch.argmax(scores[0])][None, ...]
+    best = torch.argmax(scores[0])
+    prompt_mask = mask[0][best][None, ...]
     global segment_mask
-    segment_mask = return_mask = mask[0][torch.argmax(scores[0])] > 0
+    segment_mask = return_mask = mask[0][best] > 0
+
     return jsonify({"seg": return_mask.cpu().numpy().tolist()})
 
 
